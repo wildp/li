@@ -5,6 +5,8 @@
 #include <memory>
 #include <string>
 #include <variant>
+#include <optional>
+#include <stdexcept>
 #include <exception>
 #include <unordered_map>
 #include <initializer_list>
@@ -26,6 +28,7 @@ namespace lx::l1
     class store;
 
     typedef std::unique_ptr<expression> expr_t;
+    typedef std::optional<expr_t> exprreturn_t;
 
     class stuck_error : public std::runtime_error
     {
@@ -50,7 +53,7 @@ namespace lx::l1
     class expression
     {
     public:
-        virtual expr_t step(store& s) = 0;
+        virtual exprreturn_t step(store& s) = 0;
         virtual const type check(const store& s) = 0;
         virtual expr_t copy() = 0;
         virtual ~expression() {};
@@ -85,8 +88,8 @@ namespace lx::l1
     public:
         boolean(bool v);
         boolean(const boolean&) = default;
-        expr_t step(store &s) override;
-        const type check(const store& s);
+        exprreturn_t step(store &s) override;
+        const type check(const store& s) override;
         expr_t copy() override;
         bool get() const noexcept { return v; }
     };
@@ -97,8 +100,8 @@ namespace lx::l1
     public:
         integer(integer_t v);
         integer(const integer&) = default;
-        expr_t step(store &s) override;
-        const type check(const store& s);
+        exprreturn_t step(store& s) override;
+        const type check(const store& s) override;
         expr_t copy() override;
         integer_t get() const noexcept { return v; }
     };
@@ -108,8 +111,8 @@ namespace lx::l1
     public:
         skip();
         skip(const skip&) = default;
-        expr_t step(store &s) override;
-        const type check(const store& s);
+        exprreturn_t step(store& s) override;
+        const type check(const store& s) override;
         expr_t copy() override;
     };
 
@@ -124,10 +127,10 @@ namespace lx::l1
     class op_add : public operation
     {
     public:
-        op_add(expr_t&& e1, expr_t &&e2);
+        op_add(expr_t&& e1, expr_t&& e2);
         op_add(const op_add&) = delete;
-        expr_t step(store &s) override;
-        const type check(const store& s);
+        exprreturn_t step(store& s) override;
+        const type check(const store& s) override;
         expr_t copy() override;
     };
 
@@ -136,8 +139,8 @@ namespace lx::l1
     public:
         op_ge(expr_t&& e1, expr_t&& e2);
         op_ge(const op_ge&) = delete;
-        expr_t step(store &s) override;
-        const type check(const store& s);
+        exprreturn_t step(store& s) override;
+        const type check(const store& s) override;
         expr_t copy() override;
     };
 
@@ -148,8 +151,8 @@ namespace lx::l1
         deref(loc l);
         deref(const std::string l_id);
         deref(const deref&) = delete;
-        expr_t step(store &s) override;
-        const type check(const store& s);
+        exprreturn_t step(store& s) override;
+        const type check(const store& s) override;
         expr_t copy() override;
     };
 
@@ -161,8 +164,8 @@ namespace lx::l1
         assign(loc l, expr_t&& e);
         assign(const std::string l_id, expr_t&& e);
         assign(const assign&) = delete;
-        expr_t step(store &s) override;
-        const type check(const store& s);
+        exprreturn_t step(store& s) override;
+        const type check(const store& s) override;
         expr_t copy() override;
     };
 
@@ -173,8 +176,8 @@ namespace lx::l1
     public:
         seq(expr_t&& e1, expr_t&& e2);
         seq(const seq&) = delete;
-        expr_t step(store &s) override;
-        const type check(const store& s);
+        exprreturn_t step(store& s) override;
+        const type check(const store& s) override;
         expr_t copy() override;
     };
 
@@ -186,8 +189,8 @@ namespace lx::l1
     public:
         if_then_else(expr_t&& e1, expr_t&& e2, expr_t&& e3);
         if_then_else(const if_then_else&) = delete;
-        expr_t step(store &s) override;
-        const type check(const store& s);
+        exprreturn_t step(store& s) override;
+        const type check(const store& s) override;
         expr_t copy() override;
     };
 
@@ -198,8 +201,8 @@ namespace lx::l1
     public:
         while_do(expr_t&& e1, expr_t&& e2);
         while_do(const while_do&) = delete;
-        expr_t step(store &s) override;
-        const type check(const store& s);
+        exprreturn_t step(store& s) override;
+        const type check(const store& s) override;
         expr_t copy() override;
     };
 

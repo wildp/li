@@ -14,14 +14,21 @@ namespace lx::l1 {
         runtime_error("location error: " + expression + ": location " + l.id + " does not exist in store.") {}
 
     template<typename T> requires std::is_base_of_v<expression, T>
-    const bool has_type(expr_t& ptr)
+    inline const bool has_type(expr_t& ptr)
     {
         return typeid(*ptr.get()) == typeid(T);
     }
 
-    const bool is_value(expr_t& ptr)
+    inline const bool is_value(expr_t& ptr)
     {
         return has_type<integer>(ptr) || has_type<boolean>(ptr) || has_type<skip>(ptr); 
+    }
+
+    inline void evalstep(expr_t& e, store& s)
+    {
+        exprreturn_t expr{ e->step(s) };
+        if (expr)
+            e = std::move(expr.value());
     }
 
 
@@ -71,69 +78,59 @@ namespace lx::l1 {
     /* L1 : Execution */
 
 
-    expr_t boolean::step(store& s) { return std::make_unique<boolean>(v); }
-    expr_t integer::step(store& s) { return std::make_unique<integer>(v); }
-    expr_t skip::step(store& s) { return std::make_unique<skip>(); }
+    exprreturn_t boolean::step(store& s) { return exprreturn_t(); }
+    exprreturn_t integer::step(store& s) { return exprreturn_t(); }
+    exprreturn_t skip::step(store& s) { return exprreturn_t(); }
 
-    expr_t op_add::step(store& s)
+    exprreturn_t op_add::step(store& s)
     {
         if (has_type<integer>(lhs) && has_type<integer>(rhs))
-            return std::make_unique<integer>(dynamic_cast<integer*>(lhs.get())->get() + dynamic_cast<integer*>(rhs.get())->get()); //op+ rule
+            return exprreturn_t(std::make_unique<integer>(dynamic_cast<integer*>(lhs.get())->get() + dynamic_cast<integer*>(rhs.get())->get())); //op+ rule
         else if (!is_value(lhs))
-            return std::make_unique<op_add>(lhs->step(s), std::move(rhs)); // op1 rule
-        else if (!is_value(rhs))
-            return std::make_unique<op_add>(std::move(lhs), rhs->step(s)); // op2 rule
-        else
-            throw stuck_error();
+            evalstep(lhs, s); // op1 rule
+        else /* if (!is_value(rhs)) */
+            evalstep(rhs, s); // op2 rule
+        return exprreturn_t(); 
     }
 
-    expr_t op_ge::step(store& s)
+    exprreturn_t op_ge::step(store& s)
     {
         if (has_type<integer>(lhs) && has_type<integer>(rhs))
             return std::make_unique<boolean>(dynamic_cast<integer*>(lhs.get())->get() >= dynamic_cast<integer*>(rhs.get())->get()); // op>= rule
         else if (!is_value(lhs))
-            return std::make_unique<op_ge>(lhs->step(s), std::move(rhs)); // op1 rule
-        else if (!is_value(rhs))
-            return std::make_unique<op_ge>(std::move(lhs), rhs->step(s)); // op2 rule
-        else
-            throw stuck_error();
+            evalstep(lhs, s); // op1 rule
+        else /* if (!is_value(rhs)) */
+            evalstep(rhs, s); // op2 rule
+        return exprreturn_t(); 
     }
 
-    expr_t deref::step(store& s)
+    exprreturn_t deref::step(store& s)
     {
-        if (s.contains(l))
-            return std::make_unique<integer>(s.deref(l));
-        else
-            throw stuck_error();
+        return exprreturn_t(std::make_unique<integer>(s.deref(l))); // deref rule
     }
 
-    expr_t assign::step(store& s)
+    exprreturn_t assign::step(store& s)
     {
-        if (is_value(e))
+        if (has_type<integer>(e))
         {
-            if (s.contains(l) && has_type<integer>(e))
-            {
-                s.assign(l, dynamic_cast<integer*>(e.get())->get()); // assign1 rule
-                return std::make_unique<skip>(); // assign1 rule (continued)
-            }
-            else 
-                throw stuck_error();
+            s.assign(l, dynamic_cast<integer*>(e.get())->get()); // assign1 rule
+            return exprreturn_t(std::make_unique<skip>()); // assign1 rule (continued)
         }
         else
-            return std::make_unique<assign>(loc{ l }, e->step(s)); // assign2 rule
+            evalstep(e, s); // assign2 rule
+        return exprreturn_t();
     }
 
-    expr_t seq::step(store& s)
+    exprreturn_t seq::step(store& s)
     {
         if (has_type<skip>(e1))
-            return std::move(e2); // seq1 rule
-        else if (!is_value(e1))
-            return std::make_unique<seq>(e1->step(s), std::move(e2)); // seq2 rule
-        else
-            throw stuck_error();
+            return exprreturn_t(std::move(e2)); // seq1 rule
+        else /* if (!is_value(e1)) */
+            evalstep(e1, s); // seq2 rule
+        return exprreturn_t();
     }
 
-    expr_t if_then_else::step(store& s)
+    exprreturn_t if_then_else::step(store& s)
     {
         if (has_type<boolean>(e1))
         {
@@ -142,16 +139,17 @@ namespace lx::l1 {
             else
                 return std::move(e3); // if2 rule
         }
-        else if (!is_value(e1))
-            return std::make_unique<if_then_else>(e1->step(s), std::move(e2), std::move(e3)); // if3 rule
-        else
-            throw stuck_error();
+        else /* if (!is_value(e1)) */
+            evalstep(e1, s); // if3 rule
+        return exprreturn_t();
     }
 
-    expr_t while_do::step(store& s)
+    exprreturn_t while_do::step(store& s)
     {
-        return std::make_unique<if_then_else>(e1->copy(), std::make_unique<seq>(
-            e2->copy(), std::make_unique<while_do>(e1->copy(), e2->copy())), std::make_unique<skip>()); // while rule
+        auto e1_cpy{ e1->copy() };
+        auto e2_cpy{ e2->copy() };
+        return exprreturn_t(std::make_unique<if_then_else>(std::move(e1_cpy), std::make_unique<seq>(std::move(e2_cpy),
+           std::make_unique<while_do>(std::move(e1), std::move(e2))), std::make_unique<skip>())); // while rule
     }
 
     /* L1 : Typing */
@@ -234,15 +232,13 @@ namespace lx
 
     void l1_expr::step()
     {
-        e = std::move(e->step(s));
+        evalstep(e, s);
     }
     
     l1::val l1_expr::eval()
     {
         while (!l1::is_value(e))
-        {
-            e = std::move(e->step(s));
-        }
+            evalstep(e, s);
 
         if (l1::has_type<l1::integer>(e))
             return l1::val{ *(dynamic_cast<l1::integer*>(e.get())) };
