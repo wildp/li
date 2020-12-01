@@ -38,7 +38,7 @@ int main()
         , store{ {"l1", 1000000}, {"l2", 0} } };
 
 
-expr.eval();
+auto result = expr.non_compliant_eval();
 
 /*
     auto prev_state = expr.get_state();
@@ -59,9 +59,9 @@ expr.eval();
     */
     //std::cout << "\n\nFinal: " <<  prev_state.deref(loc{"l1"}) << ' ' << prev_state.deref(loc{"l2"}) << '\n';
     
-    auto state = expr.get_state();
+    auto state = result.second;
 
-    std::cout << "\n\nFinal: " <<  state.deref(loc{"l2"}) << '\n'; 
+    std::cout << "Final: " <<  state.deref(loc{"l2"}) << '\n'; 
     
     return 0;
 }

@@ -29,6 +29,7 @@ namespace lx::l1
 
     typedef std::unique_ptr<expression> expr_t;
     typedef std::optional<expr_t> exprreturn_t;
+    typedef std::variant<integer_t, bool> val_t;
 
     class stuck_error : public std::runtime_error
     {
@@ -54,6 +55,7 @@ namespace lx::l1
     {
     public:
         virtual exprreturn_t step(store& s) = 0;
+        virtual val_t eval_nc(store& s) const = 0;
         virtual const type check(const store& s) = 0;
         virtual expr_t copy() = 0;
         virtual ~expression() {};
@@ -88,7 +90,8 @@ namespace lx::l1
     public:
         boolean(bool v);
         boolean(const boolean&) = default;
-        exprreturn_t step(store &s) override;
+        exprreturn_t step(store& s) override;
+        val_t eval_nc(store& s) const override;
         const type check(const store& s) override;
         expr_t copy() override;
         bool get() const noexcept { return v; }
@@ -101,6 +104,7 @@ namespace lx::l1
         integer(integer_t v);
         integer(const integer&) = default;
         exprreturn_t step(store& s) override;
+        val_t eval_nc(store& s) const override;
         const type check(const store& s) override;
         expr_t copy() override;
         integer_t get() const noexcept { return v; }
@@ -112,6 +116,7 @@ namespace lx::l1
         skip();
         skip(const skip&) = default;
         exprreturn_t step(store& s) override;
+        val_t eval_nc(store& s) const override;
         const type check(const store& s) override;
         expr_t copy() override;
     };
@@ -130,6 +135,7 @@ namespace lx::l1
         op_add(expr_t&& e1, expr_t&& e2);
         op_add(const op_add&) = delete;
         exprreturn_t step(store& s) override;
+        val_t eval_nc(store& s) const override;
         const type check(const store& s) override;
         expr_t copy() override;
     };
@@ -140,6 +146,7 @@ namespace lx::l1
         op_ge(expr_t&& e1, expr_t&& e2);
         op_ge(const op_ge&) = delete;
         exprreturn_t step(store& s) override;
+        val_t eval_nc(store& s) const override;
         const type check(const store& s) override;
         expr_t copy() override;
     };
@@ -152,6 +159,7 @@ namespace lx::l1
         deref(const std::string l_id);
         deref(const deref&) = delete;
         exprreturn_t step(store& s) override;
+        val_t eval_nc(store& s) const override;
         const type check(const store& s) override;
         expr_t copy() override;
     };
@@ -165,6 +173,7 @@ namespace lx::l1
         assign(const std::string l_id, expr_t&& e);
         assign(const assign&) = delete;
         exprreturn_t step(store& s) override;
+        val_t eval_nc(store& s) const override;
         const type check(const store& s) override;
         expr_t copy() override;
     };
@@ -177,6 +186,7 @@ namespace lx::l1
         seq(expr_t&& e1, expr_t&& e2);
         seq(const seq&) = delete;
         exprreturn_t step(store& s) override;
+        val_t eval_nc(store& s) const override;
         const type check(const store& s) override;
         expr_t copy() override;
     };
@@ -190,6 +200,7 @@ namespace lx::l1
         if_then_else(expr_t&& e1, expr_t&& e2, expr_t&& e3);
         if_then_else(const if_then_else&) = delete;
         exprreturn_t step(store& s) override;
+        val_t eval_nc(store& s) const override;
         const type check(const store& s) override;
         expr_t copy() override;
     };
@@ -202,11 +213,10 @@ namespace lx::l1
         while_do(expr_t&& e1, expr_t&& e2);
         while_do(const while_do&) = delete;
         exprreturn_t step(store& s) override;
+        val_t eval_nc(store& s) const override;
         const type check(const store& s) override;
         expr_t copy() override;
     };
-
-    typedef std::variant<integer, boolean, skip> val;
 }
 
 namespace lx
@@ -219,7 +229,9 @@ namespace lx
         l1_expr(l1::expr_t&& e, l1::store&& s);
         bool type_check();
         void step();
-        l1::val eval();
+        l1::val_t raw_eval();
+        std::pair<const l1::val_t, const l1::store> eval();
+        std::pair<const l1::val_t, const l1::store> non_compliant_eval();
         const l1::store get_state() const;
         bool has_terminated();
     };

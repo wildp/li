@@ -77,15 +77,14 @@ namespace lx::l1 {
 
     /* L1 : Execution */
 
-
-    exprreturn_t boolean::step(store& s) { return exprreturn_t(); }
-    exprreturn_t integer::step(store& s) { return exprreturn_t(); }
-    exprreturn_t skip::step(store& s) { return exprreturn_t(); }
+    exprreturn_t boolean::step(store& s) { return exprreturn_t{}; }
+    exprreturn_t integer::step(store& s) { return exprreturn_t{}; }
+    exprreturn_t skip::step(store& s) { return exprreturn_t{}; }
 
     exprreturn_t op_add::step(store& s)
     {
         if (has_type<integer>(lhs) && has_type<integer>(rhs))
-            return exprreturn_t(std::make_unique<integer>(dynamic_cast<integer*>(lhs.get())->get() + dynamic_cast<integer*>(rhs.get())->get())); //op+ rule
+            return exprreturn_t{ std::make_unique<integer>(dynamic_cast<integer*>(lhs.get())->get() + dynamic_cast<integer*>(rhs.get())->get()) }; //op+ rule
         else if (!is_value(lhs))
             evalstep(lhs, s); // op1 rule
         else /* if (!is_value(rhs)) */
@@ -96,17 +95,17 @@ namespace lx::l1 {
     exprreturn_t op_ge::step(store& s)
     {
         if (has_type<integer>(lhs) && has_type<integer>(rhs))
-            return std::make_unique<boolean>(dynamic_cast<integer*>(lhs.get())->get() >= dynamic_cast<integer*>(rhs.get())->get()); // op>= rule
+            return exprreturn_t{ std::make_unique<boolean>(dynamic_cast<integer*>(lhs.get())->get() >= dynamic_cast<integer*>(rhs.get())->get()) }; // op>= rule
         else if (!is_value(lhs))
             evalstep(lhs, s); // op1 rule
         else /* if (!is_value(rhs)) */
             evalstep(rhs, s); // op2 rule
-        return exprreturn_t(); 
+        return exprreturn_t{}; 
     }
 
     exprreturn_t deref::step(store& s)
     {
-        return exprreturn_t(std::make_unique<integer>(s.deref(l))); // deref rule
+        return exprreturn_t{ std::make_unique<integer>(s.deref(l)) }; // deref rule
     }
 
     exprreturn_t assign::step(store& s)
@@ -114,20 +113,20 @@ namespace lx::l1 {
         if (has_type<integer>(e))
         {
             s.assign(l, dynamic_cast<integer*>(e.get())->get()); // assign1 rule
-            return exprreturn_t(std::make_unique<skip>()); // assign1 rule (continued)
+            return exprreturn_t{ std::make_unique<skip>() }; // assign1 rule (continued)
         }
         else
             evalstep(e, s); // assign2 rule
-        return exprreturn_t();
+        return exprreturn_t{};
     }
 
     exprreturn_t seq::step(store& s)
     {
         if (has_type<skip>(e1))
-            return exprreturn_t(std::move(e2)); // seq1 rule
+            return exprreturn_t{ std::move(e2) }; // seq1 rule
         else /* if (!is_value(e1)) */
             evalstep(e1, s); // seq2 rule
-        return exprreturn_t();
+        return exprreturn_t{};
     }
 
     exprreturn_t if_then_else::step(store& s)
@@ -135,21 +134,69 @@ namespace lx::l1 {
         if (has_type<boolean>(e1))
         {
             if (dynamic_cast<boolean*>(e1.get())->get())
-                return std::move(e2); // if1 rule
+                return exprreturn_t{ std::move(e2) }; // if1 rule
             else
-                return std::move(e3); // if2 rule
+                return exprreturn_t{ std::move(e3) }; // if2 rule
         }
         else /* if (!is_value(e1)) */
             evalstep(e1, s); // if3 rule
-        return exprreturn_t();
+        return exprreturn_t{};
     }
 
     exprreturn_t while_do::step(store& s)
     {
         auto e1_cpy{ e1->copy() };
         auto e2_cpy{ e2->copy() };
-        return exprreturn_t(std::make_unique<if_then_else>(std::move(e1_cpy), std::make_unique<seq>(std::move(e2_cpy),
-           std::make_unique<while_do>(std::move(e1), std::move(e2))), std::make_unique<skip>())); // while rule
+        return exprreturn_t{ std::make_unique<if_then_else>(std::move(e1_cpy), std::make_unique<seq>(std::move(e2_cpy),
+           std::make_unique<while_do>(std::move(e1), std::move(e2))), std::make_unique<skip>()) }; // while rule
+    }
+
+    /* L1 : Non-compliant Execution */
+
+    val_t boolean::eval_nc(store& s) const { return val_t{ v }; }
+    val_t integer::eval_nc(store& s) const { return val_t{ v }; }
+    val_t skip::eval_nc(store& s) const { return val_t{}; }
+
+    val_t op_add::eval_nc(store& s) const
+    {
+        return val_t{ std::get<integer_t>(lhs->eval_nc(s)) + std::get<integer_t>(rhs->eval_nc(s)) }; 
+    }
+
+    val_t op_ge::eval_nc(store& s) const
+    {
+        return val_t{ std::get<integer_t>(lhs->eval_nc(s)) >= std::get<integer_t>(rhs->eval_nc(s)) }; 
+    }
+
+    val_t deref::eval_nc(store& s) const
+    {
+        return val_t{ s.deref(l) };
+    }
+
+    val_t assign::eval_nc(store& s) const
+    {
+        s.assign(l, std::get<integer_t>(e->eval_nc(s)));
+        return val_t{}; 
+    }
+
+    val_t seq::eval_nc(store& s) const
+    {
+        e1->eval_nc(s);
+        return e2->eval_nc(s);
+    }
+
+    val_t if_then_else::eval_nc(store& s) const
+    {
+        if (std::get<bool>(e1->eval_nc(s)))
+            return e2->eval_nc(s);
+        else
+            return e3->eval_nc(s);
+    }
+
+    val_t while_do::eval_nc(store& s) const
+    {
+        while (std::get<bool>(e1->eval_nc(s)))
+            e2->eval_nc(s);
+        return val_t{};
     }
 
     /* L1 : Typing */
@@ -235,17 +282,30 @@ namespace lx
         evalstep(e, s);
     }
     
-    l1::val l1_expr::eval()
+    l1::val_t l1_expr::raw_eval()
     {
         while (!l1::is_value(e))
             evalstep(e, s);
 
         if (l1::has_type<l1::integer>(e))
-            return l1::val{ *(dynamic_cast<l1::integer*>(e.get())) };
+            return l1::val_t{ dynamic_cast<l1::integer*>(e.get())->get() };
         else if (l1::has_type<l1::boolean>(e))
-            return l1::val{ *(dynamic_cast<l1::boolean*>(e.get())) };
+            return l1::val_t{ dynamic_cast<l1::boolean*>(e.get())->get() };
         else
-            return l1::val{ *(dynamic_cast<l1::skip*>(e.get())) };
+            return l1::val_t{};
+    }  
+
+    std::pair<const l1::val_t, const l1::store> l1_expr::eval()
+    {
+        auto rv = raw_eval();
+        return {rv, s};
+    }
+
+    std::pair<const l1::val_t, const l1::store> l1_expr::non_compliant_eval()
+    {
+        auto ns = l1::store{ s };
+        auto rv = e->eval_nc(ns);
+        return {rv, ns};
     }  
 
     const l1::store l1_expr::get_state() const
